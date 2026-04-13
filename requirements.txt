@@ -1,0 +1,13 @@
+requests
+beautifulsoup4
+apscheduler
+pandas
+python-dotenv
+fastapi
+uvicorn
+anthropic
+jinja2
+python-multipart
+httpx
+selenium
+webdriver-manager

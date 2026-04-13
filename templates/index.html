@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BRVM Analytics - Powered by Claude AI</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo-section">
+                    <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                    <h1>BRVM Analytics</h1>
+                </div>
+                <div class="ai-badge">
+                    <span class="ai-icon">🤖</span>
+                    <span>Powered by Claude AI</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Actions Suivies</div>
+                        <div class="stat-value" id="total-actions">-</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-info">
+                        <div class="stat-label">En Hausse</div>
+                        <div class="stat-value positive" id="actions-hausse">-</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📉</div>
+                    <div class="stat-info">
+                        <div class="stat-label">En Baisse</div>
+                        <div class="stat-value negative" id="actions-baisse">-</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Variation Moyenne</div>
+                        <div class="stat-value" id="variation-moyenne">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recommandations IA Section -->
+            <section class="section">
+                <div class="section-header">
+                    <h2>🤖 Recommandations IA Claude</h2>
+                    <button class="btn btn-primary" onclick="chargerRecommandations()">
+                        <span class="btn-icon">🔄</span>
+                        Actualiser
+                    </button>
+                </div>
+                <div id="recommandations-container" class="recommandations-grid">
+                    <div class="loading">Chargement des recommandations...</div>
+                </div>
+            </section>
+
+            <!-- Tableau des Cours -->
+            <section class="section">
+                <div class="section-header">
+                    <h2>📊 Cours en Temps Réel</h2>
+                    <div class="last-update">
+                        Dernière mise à jour: <span id="last-update-time">-</span>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Symbole</th>
+                                <th>Nom</th>
+                                <th>Prix (FCFA)</th>
+                                <th>Variation</th>
+                                <th>Volume</th>
+                                <th>Plus Haut</th>
+                                <th>Plus Bas</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cours-table-body">
+                            <tr>
+                                <td colspan="8" class="loading">Chargement des données...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Graphique -->
+            <section class="section">
+                <div class="section-header">
+                    <h2>📈 Historique des Prix</h2>
+                    <select id="symbole-select" class="select-input" onchange="chargerGraphique()">
+                        <option value="">Sélectionner une action...</option>
+                    </select>
+                </div>
+                <div class="chart-container">
+                    <canvas id="price-chart"></canvas>
+                </div>
+            </section>
+
+            <!-- Section Alertes -->
+            <section class="section">
+                <div class="section-header">
+                    <h2>🔔 Créer une Alerte de Prix</h2>
+                </div>
+                <div class="alert-form-container">
+                    <form id="alert-form" onsubmit="creerAlerte(event)">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="alert-email">📧 Email</label>
+                                <input type="email" id="alert-email" class="form-input" placeholder="votre@email.com" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="alert-symbole">📊 Action</label>
+                                <select id="alert-symbole" class="form-input" required>
+                                    <option value="">Sélectionner une action...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="alert-prix">💰 Prix Cible (FCFA)</label>
+                                <input type="number" id="alert-prix" class="form-input" placeholder="5000" step="0.01" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="alert-direction">📈 Direction</label>
+                                <select id="alert-direction" class="form-input" required>
+                                    <option value="hausse">Hausse (≥)</option>
+                                    <option value="baisse">Baisse (≤)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">
+                            <span class="btn-icon">🔔</span>
+                            Créer l'Alerte
+                        </button>
+                    </form>
+                    <div id="alert-message" class="alert-message"></div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- Modal d'Analyse -->
+    <div id="analyse-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🤖 Analyse Claude AI</h2>
+                <button class="modal-close" onclick="fermerModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="analyse-content">
+                <div class="loading">Analyse en cours...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Graphique Historique -->
+    <div id="chart-modal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2 id="chart-modal-title">📈 Historique des Prix</h2>
+                <button class="modal-close" onclick="fermerChartModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="chart-period-selector">
+                    <button class="period-btn active" onclick="changerPeriode('24h')">24h</button>
+                    <button class="period-btn" onclick="changerPeriode('7j')">7 jours</button>
+                    <button class="period-btn" onclick="changerPeriode('30j')">30 jours</button>
+                </div>
+                <div class="chart-container" style="height: 300px; margin-bottom: 2rem;">
+                    <canvas id="modal-price-chart"></canvas>
+                </div>
+                <div class="chart-container" style="height: 200px;">
+                    <canvas id="modal-volume-chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let coursData = [];
+        let priceChart = null;
+
+        // Charger les cours au démarrage
+        window.addEventListener('DOMContentLoaded', () => {
+            chargerCours();
+            chargerRecommandations();
+            
+            // Auto-refresh toutes les 15 minutes
+            setInterval(chargerCours, 15 * 60 * 1000);
+        });
+
+        // Charger les cours
+        async function chargerCours() {
+            try {
+                const response = await fetch('/api/cours');
+                coursData = await response.json();
+                
+                afficherCours(coursData);
+                mettreAJourStats(coursData);
+                remplirSelectSymboles(coursData);
+                
+                document.getElementById('last-update-time').textContent = new Date().toLocaleTimeString('fr-FR');
+            } catch (error) {
+                console.error('Erreur lors du chargement des cours:', error);
+                document.getElementById('cours-table-body').innerHTML = 
+                    '<tr><td colspan="8" class="error">Erreur lors du chargement des données</td></tr>';
+            }
+        }
+
+        // Afficher les cours dans le tableau
+        function afficherCours(cours) {
+            const tbody = document.getElementById('cours-table-body');
+            
+            if (cours.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="no-data">Aucune donnée disponible</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = cours.map(action => `
+                <tr>
+                    <td><strong>${action.symbole}</strong></td>
+                    <td>${action.nom}</td>
+                    <td>${formatNumber(action.prix)}</td>
+                    <td>
+                        <span class="badge ${action.variation >= 0 ? 'badge-success' : 'badge-danger'}">
+                            ${action.variation >= 0 ? '+' : ''}${action.variation.toFixed(2)}%
+                        </span>
+                    </td>
+                    <td>${formatNumber(action.volume)}</td>
+                    <td>${formatNumber(action.plus_haut)}</td>
+                    <td>${formatNumber(action.plus_bas)}</td>
+                    <td>
+                        <button class="btn btn-sm btn-secondary" onclick="analyserAction('${action.symbole}', '${action.nom}', ${action.prix}, ${action.variation}, ${action.volume}, ${action.plus_haut}, ${action.plus_bas})">
+                            🤖 Analyser
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Mettre à jour les statistiques
+        function mettreAJourStats(cours) {
+            const total = cours.length;
+            const hausse = cours.filter(a => a.variation > 0).length;
+            const baisse = cours.filter(a => a.variation < 0).length;
+            const variationMoyenne = cours.reduce((sum, a) => sum + a.variation, 0) / total;
+            
+            document.getElementById('total-actions').textContent = total;
+            document.getElementById('actions-hausse').textContent = hausse;
+            document.getElementById('actions-baisse').textContent = baisse;
+            
+            const variationElement = document.getElementById('variation-moyenne');
+            variationElement.textContent = `${variationMoyenne >= 0 ? '+' : ''}${variationMoyenne.toFixed(2)}%`;
+            variationElement.className = `stat-value ${variationMoyenne >= 0 ? 'positive' : 'negative'}`;
+        }
+
+        // Remplir le select des symboles
+        function remplirSelectSymboles(cours) {
+            const select = document.getElementById('symbole-select');
+            select.innerHTML = '<option value="">Sélectionner une action...</option>' +
+                cours.map(a => `<option value="${a.symbole}">${a.symbole} - ${a.nom}</option>`).join('');
+        }
+
+        // Charger le graphique
+        async function chargerGraphique() {
+            const symbole = document.getElementById('symbole-select').value;
+            
+            if (!symbole) {
+                if (priceChart) {
+                    priceChart.destroy();
+                    priceChart = null;
+                }
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/cours/${symbole}?limit=30`);
+                const data = await response.json();
+                
+                const historique = data.historique.reverse();
+                
+                const ctx = document.getElementById('price-chart').getContext('2d');
+                
+                if (priceChart) {
+                    priceChart.destroy();
+                }
+                
+                priceChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: historique.map(h => new Date(h.date_heure).toLocaleDateString('fr-FR')),
+                        datasets: [{
+                            label: `Prix de ${symbole} (FCFA)`,
+                            data: historique.map(h => h.prix),
+                            borderColor: '#00d4ff',
+                            backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                labels: { color: '#e0e0e0' }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                ticks: { color: '#e0e0e0' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                            },
+                            x: {
+                                ticks: { color: '#e0e0e0' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Erreur lors du chargement du graphique:', error);
+            }
+        }
+
+        // Analyser une action avec Claude
+        async function analyserAction(symbole, nom, prix, variation, volume, plus_haut, plus_bas) {
+            ouvrirModal();
+            
+            try {
+                const response = await fetch('/api/analyse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbole, nom, prix, variation, volume, plus_haut, plus_bas })
+                });
+                
+                const data = await response.json();
+                const analyse = data.analyse;
+                
+                document.getElementById('analyse-content').innerHTML = `
+                    <div class="analyse-header">
+                        <h3>${symbole} - ${nom}</h3>
+                        <div class="analyse-badge ${analyse.recommandation.toLowerCase()}">${analyse.recommandation}</div>
+                    </div>
+                    
+                    <div class="analyse-grid">
+                        <div class="analyse-item">
+                            <div class="analyse-label">Niveau de Risque</div>
+                            <div class="analyse-value risk-${analyse.niveau_risque.toLowerCase()}">${analyse.niveau_risque}</div>
+                        </div>
+                        <div class="analyse-item">
+                            <div class="analyse-label">Score de Confiance</div>
+                            <div class="analyse-value">${analyse.score_confiance}%</div>
+                        </div>
+                        <div class="analyse-item">
+                            <div class="analyse-label">Prix Cible</div>
+                            <div class="analyse-value">${formatNumber(analyse.prix_cible)} FCFA</div>
+                        </div>
+                        <div class="analyse-item">
+                            <div class="analyse-label">Horizon</div>
+                            <div class="analyse-value">${analyse.horizon_investissement.replace('_', ' ')}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="analyse-section">
+                        <h4>💡 Explication</h4>
+                        <p>${analyse.explication}</p>
+                    </div>
+                    
+                    <div class="analyse-section">
+                        <h4>✅ Points Forts</h4>
+                        <ul>
+                            ${analyse.points_forts.map(p => `<li>${p}</li>`).join('')}
+                        </ul>
+                    </div>
+                    
+                    <div class="analyse-section">
+                        <h4>⚠️ Points Faibles</h4>
+                        <ul>
+                            ${analyse.points_faibles.map(p => `<li>${p}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Erreur lors de l\'analyse:', error);
+                document.getElementById('analyse-content').innerHTML = 
+                    '<div class="error">Erreur lors de l\'analyse. Vérifiez que la clé API Claude est configurée.</div>';
+            }
+        }
+
+        // Charger les recommandations
+        async function chargerRecommandations() {
+            const container = document.getElementById('recommandations-container');
+            container.innerHTML = '<div class="loading">Chargement des recommandations IA...</div>';
+            
+            try {
+                const response = await fetch('/api/recommandations');
+                const data = await response.json();
+                
+                if (data.recommandations.length === 0) {
+                    container.innerHTML = '<div class="no-data">Aucune recommandation disponible</div>';
+                    return;
+                }
+                
+                container.innerHTML = data.recommandations.map(rec => `
+                    <div class="recommandation-card ${rec.recommandation.toLowerCase()}">
+                        <div class="recommandation-header">
+                            <div>
+                                <div class="recommandation-symbole">${rec.symbole}</div>
+                                <div class="recommandation-nom">${rec.nom}</div>
+                            </div>
+                            <div class="recommandation-badge">${rec.recommandation}</div>
+                        </div>
+                        <div class="recommandation-body">
+                            <div class="recommandation-info">
+                                <span class="label">Prix:</span>
+                                <span class="value">${formatNumber(rec.prix)} FCFA</span>
+                            </div>
+                            <div class="recommandation-info">
+                                <span class="label">Variation:</span>
+                                <span class="value ${rec.variation >= 0 ? 'positive' : 'negative'}">
+                                    ${rec.variation >= 0 ? '+' : ''}${rec.variation.toFixed(2)}%
+                                </span>
+                            </div>
+                            <div class="recommandation-info">
+                                <span class="label">Risque:</span>
+                                <span class="value">${rec.niveau_risque}</span>
+                            </div>
+                            <div class="recommandation-info">
+                                <span class="label">Confiance:</span>
+                                <span class="value">${rec.score_confiance}%</span>
+                            </div>
+                        </div>
+                        <div class="recommandation-explication">${rec.explication}</div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Erreur lors du chargement des recommandations:', error);
+                container.innerHTML = '<div class="error">Erreur lors du chargement des recommandations</div>';
+            }
+        }
+
+        // Modal
+        function ouvrirModal() {
+            document.getElementById('analyse-modal').style.display = 'flex';
+        }
+
+        function fermerModal() {
+            document.getElementById('analyse-modal').style.display = 'none';
+        }
+
+        // Fermer le modal en cliquant à l'extérieur
+        window.onclick = function(event) {
+            const modal = document.getElementById('analyse-modal');
+            if (event.target === modal) {
+                fermerModal();
+            }
+        }
+
+        // Utilitaires
+        function formatNumber(num) {
+            return new Intl.NumberFormat('fr-FR').format(num);
+        }
+
+        // Créer une alerte
+        async function creerAlerte(event) {
+            event.preventDefault();
+            
+            const email = document.getElementById('alert-email').value;
+            const symbole = document.getElementById('alert-symbole').value;
+            const prix_cible = parseFloat(document.getElementById('alert-prix').value);
+            const direction = document.getElementById('alert-direction').value;
+            
+            const messageDiv = document.getElementById('alert-message');
+            messageDiv.textContent = 'Création de l\'alerte...';
+            messageDiv.className = 'alert-message info';
+            
+            try {
+                const response = await fetch('/api/alertes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, symbole, prix_cible, direction })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    messageDiv.textContent = `✅ ${data.message}. Vous recevrez un email quand le prix sera atteint.`;
+                    messageDiv.className = 'alert-message success';
+                    document.getElementById('alert-form').reset();
+                } else {
+                    messageDiv.textContent = `❌ Erreur: ${data.detail || 'Impossible de créer l\'alerte'}`;
+                    messageDiv.className = 'alert-message error';
+                }
+            } catch (error) {
+                console.error('Erreur lors de la création de l\'alerte:', error);
+                messageDiv.textContent = '❌ Erreur lors de la création de l\'alerte';
+                messageDiv.className = 'alert-message error';
+            }
+        }
+
+        // Remplir le select des alertes
+        function remplirSelectSymboles(cours) {
+            const select = document.getElementById('symbole-select');
+            const alertSelect = document.getElementById('alert-symbole');
+            
+            const options = '<option value="">Sélectionner une action...</option>' +
+                cours.map(a => `<option value="${a.symbole}">${a.symbole} - ${a.nom}</option>`).join('');
+            
+            select.innerHTML = options;
+            alertSelect.innerHTML = options;
+        }
+
+        // Modal graphique historique
+        let modalPriceChart = null;
+        let modalVolumeChart = null;
+        let currentSymbole = '';
+        let currentPeriod = '24h';
+
+        function ouvrirChartModal(symbole) {
+            currentSymbole = symbole;
+            document.getElementById('chart-modal').style.display = 'flex';
+            document.getElementById('chart-modal-title').textContent = `📈 Historique de ${symbole}`;
+            chargerChartModal(symbole, currentPeriod);
+        }
+
+        function fermerChartModal() {
+            document.getElementById('chart-modal').style.display = 'none';
+            if (modalPriceChart) modalPriceChart.destroy();
+            if (modalVolumeChart) modalVolumeChart.destroy();
+        }
+
+        function changerPeriode(period) {
+            currentPeriod = period;
+            document.querySelectorAll('.period-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            chargerChartModal(currentSymbole, period);
+        }
+
+        async function chargerChartModal(symbole, period) {
+            const limits = { '24h': 24, '7j': 7, '30j': 30 };
+            const limit = limits[period] || 30;
+            
+            try {
+                const response = await fetch(`/api/cours/${symbole}?limit=${limit}`);
+                const data = await response.json();
+                const historique = data.historique.reverse();
+                
+                // Déterminer la tendance
+                const firstPrice = historique[0].prix;
+                const lastPrice = historique[historique.length - 1].prix;
+                const isUptrend = lastPrice >= firstPrice;
+                const chartColor = isUptrend ? '#10b981' : '#ef4444';
+                
+                // Graphique des prix
+                const ctxPrice = document.getElementById('modal-price-chart').getContext('2d');
+                if (modalPriceChart) modalPriceChart.destroy();
+                
+                modalPriceChart = new Chart(ctxPrice, {
+                    type: 'line',
+                    data: {
+                        labels: historique.map(h => new Date(h.date_heure).toLocaleDateString('fr-FR')),
+                        datasets: [{
+                            label: `Prix (FCFA)`,
+                            data: historique.map(h => h.prix),
+                            borderColor: chartColor,
+                            backgroundColor: isUptrend ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: '#e0e0e0' } }
+                        },
+                        scales: {
+                            y: {
+                                ticks: { color: '#e0e0e0' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                            },
+                            x: {
+                                ticks: { color: '#e0e0e0' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                            }
+                        }
+                    }
+                });
+                
+                // Graphique des volumes
+                const ctxVolume = document.getElementById('modal-volume-chart').getContext('2d');
+                if (modalVolumeChart) modalVolumeChart.destroy();
+                
+                modalVolumeChart = new Chart(ctxVolume, {
+                    type: 'bar',
+                    data: {
+                        labels: historique.map(h => new Date(h.date_heure).toLocaleDateString('fr-FR')),
+                        datasets: [{
+                            label: 'Volume',
+                            data: historique.map(h => h.volume),
+                            backgroundColor: 'rgba(0, 212, 255, 0.6)',
+                            borderColor: '#00d4ff',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: '#e0e0e0' } }
+                        },
+                        scales: {
+                            y: {
+                                ticks: { color: '#e0e0e0' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                            },
+                            x: {
+                                ticks: { color: '#e0e0e0' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Erreur lors du chargement du graphique modal:', error);
+            }
+        }
+
+        // Modifier l'affichage du tableau pour ajouter un bouton graphique
+        function afficherCours(cours) {
+            const tbody = document.getElementById('cours-table-body');
+            
+            if (cours.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="no-data">Aucune donnée disponible</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = cours.map(action => `
+                <tr onclick="ouvrirChartModal('${action.symbole}')" style="cursor: pointer;" title="Cliquer pour voir l'historique">
+                    <td><strong>${action.symbole}</strong></td>
+                    <td class="mobile-hide">${action.nom}</td>
+                    <td>${formatNumber(action.prix)}</td>
+                    <td>
+                        <span class="badge ${action.variation >= 0 ? 'badge-success' : 'badge-danger'}">
+                            ${action.variation >= 0 ? '+' : ''}${action.variation.toFixed(2)}%
+                        </span>
+                    </td>
+                    <td class="mobile-hide">${formatNumber(action.volume)}</td>
+                    <td class="mobile-hide">${formatNumber(action.plus_haut)}</td>
+                    <td class="mobile-hide">${formatNumber(action.plus_bas)}</td>
+                    <td onclick="event.stopPropagation();">
+                        <button class="btn btn-sm btn-secondary" onclick="analyserAction('${action.symbole}', '${action.nom}', ${action.prix}, ${action.variation}, ${action.volume}, ${action.plus_haut}, ${action.plus_bas})">
+                            🤖 <span class="mobile-hide">Analyser</span>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+    </script>
+</body>
+</html>
