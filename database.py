@@ -1,43 +1,59 @@
 """
-Module de gestion de la base de données SQLite pour stocker les données de la BRVM
+Module de gestion de la base de données PostgreSQL pour stocker les données de la BRVM
 """
 
-import sqlite3
+import psycopg2
+from psycopg2.pool import ThreadedConnectionPool
+from psycopg2.extras import RealDictCursor
 from datetime import datetime
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class BRVMDatabase:
-    """Classe pour gérer la base de données SQLite des cours de la BRVM"""
+    """Classe pour gérer la base de données PostgreSQL des cours de la BRVM"""
     
-    def __init__(self, db_name='brvm.db'):
+    def __init__(self):
         """
-        Initialise la connexion à la base de données
+        Initialise le pool de connexions à la base de données PostgreSQL
+        """
+        self.database_url = os.getenv('DATABASE_URL')
+        if not self.database_url:
+            raise ValueError("DATABASE_URL n'est pas définie dans les variables d'environnement")
         
-        Args:
-            db_name (str): Nom du fichier de base de données
-        """
-        self.db_name = db_name
-        self.conn = None
-        self.cursor = None
-        self._connect()
-        self._create_table()
-    
-    def _connect(self):
-        """Établit la connexion à la base de données"""
+        # Créer le pool de connexions
         try:
-            self.conn = sqlite3.connect(self.db_name)
-            self.cursor = self.conn.cursor()
-            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Connexion à la base de données '{self.db_name}' établie")
-        except sqlite3.Error as e:
-            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur de connexion à la base de données: {e}")
+            self.pool = ThreadedConnectionPool(
+                minconn=1,
+                maxconn=10,
+                dsn=self.database_url
+            )
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Pool de connexions PostgreSQL créé avec succès")
+            self._create_table()
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la création du pool: {e}")
+            raise
+    
+    def get_connection(self):
+        """Obtient une connexion du pool"""
+        return self.pool.getconn()
+    
+    def release_connection(self, conn):
+        """Libère une connexion vers le pool"""
+        self.pool.putconn(conn)
     
     def _create_table(self):
         """Crée la table 'cours' si elle n'existe pas"""
+        conn = None
         try:
-            self.cursor.execute('''
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS cours (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     symbole TEXT NOT NULL,
                     nom TEXT NOT NULL,
                     prix REAL NOT NULL,
@@ -50,15 +66,21 @@ class BRVMDatabase:
             ''')
             
             # Créer un index sur le symbole et la date pour améliorer les performances
-            self.cursor.execute('''
+            cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_symbole_date 
                 ON cours(symbole, date_heure)
             ''')
             
-            self.conn.commit()
+            conn.commit()
+            cursor.close()
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Table 'cours' vérifiée/créée avec succès")
-        except sqlite3.Error as e:
+        except Exception as e:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la création de la table: {e}")
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                self.release_connection(conn)
     
     def save_data(self, actions):
         """
@@ -74,12 +96,16 @@ class BRVMDatabase:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Aucune donnée à sauvegarder")
             return 0
         
+        conn = None
         try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
             count = 0
+            
             for action in actions:
-                self.cursor.execute('''
+                cursor.execute('''
                     INSERT INTO cours (symbole, nom, prix, variation, volume, plus_haut, plus_bas, date_heure)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ''', (
                     action['symbole'],
                     action['nom'],
@@ -92,14 +118,19 @@ class BRVMDatabase:
                 ))
                 count += 1
             
-            self.conn.commit()
+            conn.commit()
+            cursor.close()
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {count} enregistrements sauvegardés dans la base de données")
             return count
             
-        except sqlite3.Error as e:
+        except Exception as e:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la sauvegarde: {e}")
-            self.conn.rollback()
+            if conn:
+                conn.rollback()
             return 0
+        finally:
+            if conn:
+                self.release_connection(conn)
     
     def get_latest_data(self, limit=10):
         """
@@ -111,21 +142,29 @@ class BRVMDatabase:
         Returns:
             list: Liste de tuples contenant les données
         """
+        conn = None
         try:
-            self.cursor.execute('''
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
                 SELECT symbole, nom, prix, variation, volume, plus_haut, plus_bas, date_heure
                 FROM cours
                 ORDER BY date_heure DESC
-                LIMIT ?
+                LIMIT %s
             ''', (limit,))
             
-            results = self.cursor.fetchall()
+            results = cursor.fetchall()
+            cursor.close()
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {len(results)} enregistrements récupérés")
             return results
             
-        except sqlite3.Error as e:
+        except Exception as e:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la récupération: {e}")
             return []
+        finally:
+            if conn:
+                self.release_connection(conn)
     
     def get_data_by_symbole(self, symbole, limit=10):
         """
@@ -138,21 +177,29 @@ class BRVMDatabase:
         Returns:
             list: Liste de tuples contenant les données
         """
+        conn = None
         try:
-            self.cursor.execute('''
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
                 SELECT symbole, nom, prix, variation, volume, plus_haut, plus_bas, date_heure
                 FROM cours
-                WHERE symbole = ?
+                WHERE symbole = %s
                 ORDER BY date_heure DESC
-                LIMIT ?
+                LIMIT %s
             ''', (symbole, limit))
             
-            results = self.cursor.fetchall()
+            results = cursor.fetchall()
+            cursor.close()
             return results
             
-        except sqlite3.Error as e:
+        except Exception as e:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la récupération: {e}")
             return []
+        finally:
+            if conn:
+                self.release_connection(conn)
     
     def get_all_symboles(self):
         """
@@ -161,19 +208,27 @@ class BRVMDatabase:
         Returns:
             list: Liste des symboles
         """
+        conn = None
         try:
-            self.cursor.execute('''
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
                 SELECT DISTINCT symbole
                 FROM cours
                 ORDER BY symbole
             ''')
             
-            results = [row[0] for row in self.cursor.fetchall()]
+            results = [row[0] for row in cursor.fetchall()]
+            cursor.close()
             return results
             
-        except sqlite3.Error as e:
+        except Exception as e:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la récupération: {e}")
             return []
+        finally:
+            if conn:
+                self.release_connection(conn)
     
     def get_statistics(self):
         """
@@ -182,18 +237,24 @@ class BRVMDatabase:
         Returns:
             dict: Dictionnaire contenant les statistiques
         """
+        conn = None
         try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
             # Nombre total d'enregistrements
-            self.cursor.execute('SELECT COUNT(*) FROM cours')
-            total_records = self.cursor.fetchone()[0]
+            cursor.execute('SELECT COUNT(*) FROM cours')
+            total_records = cursor.fetchone()[0]
             
             # Nombre de symboles uniques
-            self.cursor.execute('SELECT COUNT(DISTINCT symbole) FROM cours')
-            unique_symboles = self.cursor.fetchone()[0]
+            cursor.execute('SELECT COUNT(DISTINCT symbole) FROM cours')
+            unique_symboles = cursor.fetchone()[0]
             
             # Date du premier et dernier enregistrement
-            self.cursor.execute('SELECT MIN(date_heure), MAX(date_heure) FROM cours')
-            first_date, last_date = self.cursor.fetchone()
+            cursor.execute('SELECT MIN(date_heure), MAX(date_heure) FROM cours')
+            first_date, last_date = cursor.fetchone()
+            
+            cursor.close()
             
             stats = {
                 'total_records': total_records,
@@ -204,15 +265,100 @@ class BRVMDatabase:
             
             return stats
             
-        except sqlite3.Error as e:
+        except Exception as e:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la récupération des statistiques: {e}")
             return {}
+        finally:
+            if conn:
+                self.release_connection(conn)
+    
+    def get_latest_cours(self):
+        """
+        Récupère les derniers cours pour chaque action en utilisant DISTINCT ON
+        
+        Returns:
+            list: Liste de dictionnaires contenant les derniers cours
+        """
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            cursor.execute('''
+                SELECT DISTINCT ON (symbole) 
+                    symbole, nom, prix, variation, volume, plus_haut, plus_bas, date_heure
+                FROM cours
+                ORDER BY symbole, date_heure DESC
+            ''')
+            
+            results = [dict(row) for row in cursor.fetchall()]
+            cursor.close()
+            return results
+            
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la récupération des derniers cours: {e}")
+            return []
+        finally:
+            if conn:
+                self.release_connection(conn)
+    
+    def get_historique_action(self, symbole, limit=30):
+        """
+        Récupère l'historique d'une action
+        
+        Args:
+            symbole (str): Symbole de l'action
+            limit (int): Nombre maximum d'enregistrements à récupérer
+            
+        Returns:
+            list: Liste de dictionnaires contenant l'historique
+        """
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            cursor.execute('''
+                SELECT symbole, nom, prix, variation, volume, plus_haut, plus_bas, date_heure
+                FROM cours
+                WHERE symbole = %s
+                ORDER BY date_heure DESC
+                LIMIT %s
+            ''', (symbole, limit))
+            
+            results = [dict(row) for row in cursor.fetchall()]
+            cursor.close()
+            return results
+            
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la récupération de l'historique: {e}")
+            return []
+        finally:
+            if conn:
+                self.release_connection(conn)
     
     def close(self):
-        """Ferme la connexion à la base de données"""
-        if self.conn:
-            self.conn.close()
-            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Connexion à la base de données fermée")
+        """Ferme toutes les connexions du pool"""
+        if self.pool:
+            self.pool.closeall()
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Pool de connexions fermé")
+
+
+# Fonctions utilitaires pour les autres modules
+def get_connection():
+    """Fonction utilitaire pour obtenir une connexion du pool global"""
+    if not hasattr(get_connection, 'pool'):
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            raise ValueError("DATABASE_URL n'est pas définie")
+        get_connection.pool = ThreadedConnectionPool(minconn=1, maxconn=10, dsn=database_url)
+    return get_connection.pool.getconn()
+
+
+def release_connection(conn):
+    """Fonction utilitaire pour libérer une connexion vers le pool global"""
+    if hasattr(get_connection, 'pool'):
+        get_connection.pool.putconn(conn)
 
 
 if __name__ == "__main__":

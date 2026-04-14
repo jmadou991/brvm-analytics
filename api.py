@@ -9,7 +9,6 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from fastapi import Request
 from pydantic import BaseModel
-import sqlite3
 from datetime import datetime
 from typing import List, Optional
 import os
@@ -169,55 +168,6 @@ class AnalyseRequest(BaseModel):
     plus_bas: float
 
 
-# Fonctions utilitaires
-def get_db_connection():
-    """Crée une connexion à la base de données SQLite"""
-    conn = sqlite3.connect('brvm.db')
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def get_latest_cours():
-    """Récupère les derniers cours pour chaque action"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Récupérer le dernier cours pour chaque symbole
-    cursor.execute('''
-        SELECT c1.symbole, c1.nom, c1.prix, c1.variation, c1.volume, 
-               c1.plus_haut, c1.plus_bas, c1.date_heure
-        FROM cours c1
-        INNER JOIN (
-            SELECT symbole, MAX(date_heure) as max_date
-            FROM cours
-            GROUP BY symbole
-        ) c2 ON c1.symbole = c2.symbole AND c1.date_heure = c2.max_date
-        ORDER BY c1.symbole
-    ''')
-    
-    rows = cursor.fetchall()
-    conn.close()
-    
-    return [dict(row) for row in rows]
-
-
-def get_historique_action(symbole: str, limit: int = 30):
-    """Récupère l'historique d'une action"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        SELECT symbole, nom, prix, variation, volume, plus_haut, plus_bas, date_heure
-        FROM cours
-        WHERE symbole = ?
-        ORDER BY date_heure DESC
-        LIMIT ?
-    ''', (symbole, limit))
-    
-    rows = cursor.fetchall()
-    conn.close()
-    
-    return [dict(row) for row in rows]
 
 
 # Routes API
@@ -230,10 +180,10 @@ async def root(request: Request):
 @app.get("/api/cours", response_model=List[dict])
 async def get_cours():
     """
-    Retourne tous les derniers cours BRVM depuis SQLite
+    Retourne tous les derniers cours BRVM depuis PostgreSQL
     """
     try:
-        cours = get_latest_cours()
+        cours = db.get_latest_cours()
         return cours
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de la récupération des cours: {str(e)}")
@@ -245,7 +195,7 @@ async def get_cours_symbole(symbole: str, limit: int = 30):
     Retourne l'historique d'une action spécifique
     """
     try:
-        historique = get_historique_action(symbole, limit)
+        historique = db.get_historique_action(symbole, limit)
         
         if not historique:
             raise HTTPException(status_code=404, detail=f"Aucune donnée trouvée pour le symbole {symbole}")
@@ -270,7 +220,7 @@ async def analyser_action(data: AnalyseRequest):
     
     try:
         # Récupérer l'historique de l'action
-        historique = get_historique_action(data.symbole, limit=10)
+        historique = db.get_historique_action(data.symbole, limit=10)
         
         # Préparer les données pour l'analyse
         donnees_action = {
@@ -308,7 +258,7 @@ async def get_recommandations():
     
     try:
         # Récupérer tous les cours
-        cours = get_latest_cours()
+        cours = db.get_latest_cours()
         
         if not cours:
             return {"recommandations": [], "message": "Aucune donnée disponible"}
@@ -318,7 +268,7 @@ async def get_recommandations():
         # Analyser chaque action (limiter à 10 pour éviter les coûts API élevés)
         for action in cours[:10]:
             try:
-                historique = get_historique_action(action['symbole'], limit=5)
+                historique = db.get_historique_action(action['symbole'], limit=5)
                 
                 donnees_action = {
                     'symbole': action['symbole'],
@@ -368,7 +318,7 @@ async def analyser_marche():
     
     try:
         # Récupérer tous les cours
-        cours = get_latest_cours()
+        cours = db.get_latest_cours()
         
         if not cours:
             raise HTTPException(status_code=404, detail="Aucune donnée disponible")
@@ -394,30 +344,8 @@ async def get_statistics():
     Retourne des statistiques sur la base de données
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Nombre total d'enregistrements
-        cursor.execute('SELECT COUNT(*) as total FROM cours')
-        total_records = cursor.fetchone()['total']
-        
-        # Nombre de symboles uniques
-        cursor.execute('SELECT COUNT(DISTINCT symbole) as total FROM cours')
-        unique_symboles = cursor.fetchone()['total']
-        
-        # Date du premier et dernier enregistrement
-        cursor.execute('SELECT MIN(date_heure) as first_date, MAX(date_heure) as last_date FROM cours')
-        dates = cursor.fetchone()
-        
-        conn.close()
-        
-        return {
-            'total_records': total_records,
-            'unique_symboles': unique_symboles,
-            'first_date': dates['first_date'],
-            'last_date': dates['last_date']
-        }
-        
+        stats = db.get_statistics()
+        return stats
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de la récupération des statistiques: {str(e)}")
 

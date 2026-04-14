@@ -6,10 +6,11 @@ Envoie des notifications par email quand un prix cible est atteint
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import sqlite3
+from psycopg2.extras import RealDictCursor
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+from database import get_connection, release_connection
 
 load_dotenv()
 
@@ -30,24 +31,33 @@ class AlertManager:
     
     def _create_alerts_table(self):
         """Crée la table des alertes dans la base de données"""
-        conn = sqlite3.connect('brvm.db')
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS alertes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                symbole TEXT NOT NULL,
-                email TEXT NOT NULL,
-                prix_cible REAL NOT NULL,
-                direction TEXT NOT NULL,
-                active INTEGER DEFAULT 1,
-                date_creation TEXT NOT NULL,
-                date_declenchement TEXT
-            )
-        ''')
-        
-        conn.commit()
-        conn.close()
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS alertes (
+                    id SERIAL PRIMARY KEY,
+                    symbole TEXT NOT NULL,
+                    email TEXT NOT NULL,
+                    prix_cible REAL NOT NULL,
+                    direction TEXT NOT NULL,
+                    active INTEGER DEFAULT 1,
+                    date_creation TEXT NOT NULL,
+                    date_declenchement TEXT
+                )
+            ''')
+            
+            conn.commit()
+            cursor.close()
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la création de la table alertes: {e}")
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                release_connection(conn)
     
     def create_alert(self, symbole: str, email: str, prix_cible: float, direction: str):
         """
@@ -62,21 +72,32 @@ class AlertManager:
         Returns:
             int: ID de l'alerte créée
         """
-        conn = sqlite3.connect('brvm.db')
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            INSERT INTO alertes (symbole, email, prix_cible, direction, date_creation)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (symbole, email, prix_cible, direction, datetime.now().isoformat()))
-        
-        alert_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Alerte créée: {symbole} @ {prix_cible} FCFA ({direction}) pour {email}")
-        
-        return alert_id
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO alertes (symbole, email, prix_cible, direction, date_creation)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            ''', (symbole, email, prix_cible, direction, datetime.now().isoformat()))
+            
+            alert_id = cursor.fetchone()[0]
+            conn.commit()
+            cursor.close()
+            
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Alerte créée: {symbole} @ {prix_cible} FCFA ({direction}) pour {email}")
+            
+            return alert_id
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la création de l'alerte: {e}")
+            if conn:
+                conn.rollback()
+            return None
+        finally:
+            if conn:
+                release_connection(conn)
     
     def get_active_alerts(self):
         """
@@ -85,18 +106,25 @@ class AlertManager:
         Returns:
             list: Liste des alertes actives
         """
-        conn = sqlite3.connect('brvm.db')
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT * FROM alertes WHERE active = 1
-        ''')
-        
-        alerts = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        
-        return alerts
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            cursor.execute('''
+                SELECT * FROM alertes WHERE active = 1
+            ''')
+            
+            alerts = [dict(row) for row in cursor.fetchall()]
+            cursor.close()
+            
+            return alerts
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la récupération des alertes actives: {e}")
+            return []
+        finally:
+            if conn:
+                release_connection(conn)
     
     def get_user_alerts(self, email: str):
         """
@@ -108,18 +136,25 @@ class AlertManager:
         Returns:
             list: Liste des alertes de l'utilisateur
         """
-        conn = sqlite3.connect('brvm.db')
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT * FROM alertes WHERE email = ? ORDER BY date_creation DESC
-        ''', (email,))
-        
-        alerts = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        
-        return alerts
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            cursor.execute('''
+                SELECT * FROM alertes WHERE email = %s ORDER BY date_creation DESC
+            ''', (email,))
+            
+            alerts = [dict(row) for row in cursor.fetchall()]
+            cursor.close()
+            
+            return alerts
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la récupération des alertes utilisateur: {e}")
+            return []
+        finally:
+            if conn:
+                release_connection(conn)
     
     def deactivate_alert(self, alert_id: int):
         """
@@ -128,17 +163,26 @@ class AlertManager:
         Args:
             alert_id: ID de l'alerte à désactiver
         """
-        conn = sqlite3.connect('brvm.db')
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            UPDATE alertes 
-            SET active = 0, date_declenchement = ?
-            WHERE id = ?
-        ''', (datetime.now().isoformat(), alert_id))
-        
-        conn.commit()
-        conn.close()
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE alertes 
+                SET active = 0, date_declenchement = %s
+                WHERE id = %s
+            ''', (datetime.now().isoformat(), alert_id))
+            
+            conn.commit()
+            cursor.close()
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la désactivation de l'alerte: {e}")
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                release_connection(conn)
     
     def delete_alert(self, alert_id: int):
         """
@@ -147,13 +191,22 @@ class AlertManager:
         Args:
             alert_id: ID de l'alerte à supprimer
         """
-        conn = sqlite3.connect('brvm.db')
-        cursor = conn.cursor()
-        
-        cursor.execute('DELETE FROM alertes WHERE id = ?', (alert_id,))
-        
-        conn.commit()
-        conn.close()
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('DELETE FROM alertes WHERE id = %s', (alert_id,))
+            
+            conn.commit()
+            cursor.close()
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur lors de la suppression de l'alerte: {e}")
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                release_connection(conn)
     
     def check_alerts(self, actions_data: list):
         """
@@ -241,7 +294,7 @@ Prix actuel: {prix_actuel:,.0f} FCFA
 Direction: {direction.upper()}
 
 Consultez votre dashboard pour plus de détails:
-http://localhost:8000
+https://brvm-analytics-production.up.railway.app
 
 ---
 BRVM Analytics - Powered by Claude AI
@@ -279,7 +332,7 @@ BRVM Analytics - Powered by Claude AI
                             
                             <p>Consultez votre dashboard pour analyser cette opportunité avec l'IA Claude.</p>
                             
-                            <a href="http://localhost:8000" class="btn">Voir le Dashboard</a>
+                            <a href="https://brvm-analytics-production.up.railway.app" class="btn">Voir le Dashboard</a>
                         </div>
                         <div class="footer">
                             <p>BRVM Analytics - Powered by Claude AI</p>
